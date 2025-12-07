@@ -611,15 +611,25 @@ void executeStage() {
     }
 }
 
+    // void commitStage() {
+    //     // Commit in order
+    //     for (int i = 0; i < ROB_SIZE; i++) {
+    //         ROBEntry& entry = reorderBuffer[i];
+    //         if (entry.type != INVALID && entry.state == EXECUTING_ROB && entry.ready) {
+    //             if (debugMode) {
+    //                 cout << "Cycle " << currentCycle << ": Commit ROB" << i 
+    //                      << " (" << instructionTypeToString(entry.type) << ")\n";
+    //             }
     void commitStage() {
-        // Commit in order
-        for (int i = 0; i < ROB_SIZE; i++) {
-            ROBEntry& entry = reorderBuffer[i];
-            if (entry.type != INVALID && entry.state == EXECUTING_ROB && entry.ready) {
-                if (debugMode) {
-                    cout << "Cycle " << currentCycle << ": Commit ROB" << i 
-                         << " (" << instructionTypeToString(entry.type) << ")\n";
-                }
+    for (int i = 0; i < ROB_SIZE; i++) {
+        ROBEntry& entry = reorderBuffer[i];
+        if (entry.type != INVALID && entry.state == EXECUTING_ROB && 
+            entry.ready && entry.writeCycle < currentCycle) {  //   CHECK
+            
+            if (debugMode) {
+                cout << "Cycle " << currentCycle << ": Commit ROB" << i
+                     << " (" << instructionTypeToString(entry.type) << ")\n";
+            }
                 
                 if (entry.type == STORE) {
                     if (entry.destination >= 0 && entry.destination < MEMORY_SIZE) {
@@ -650,8 +660,38 @@ void executeStage() {
         
         cout << "\n=== Starting Simulation ===\n";
         cout << "Total instructions: " << maxInstructions << "\n";
-        
+
         while (instructionsCompleted < maxInstructions) {
+    currentCycle++;
+
+    if (debugMode) {
+        cout << "\n--- Cycle " << currentCycle << " ---\n";
+    }
+
+    // CORRECT order for this design:
+    // 1) Commit (uses values already written in previous cycle)
+    commitStage();
+
+    // 2) Write results / broadcast
+    writeResultStage();
+
+    // 3) Execute (advance functional units)
+    executeStage();
+
+    // 4) Issue at most one instruction
+    if (!stall && instructionIndex < maxInstructions) {
+        if (issueInstruction(instructionQueue[instructionIndex])) {
+            instructionIndex++;
+        } else {
+            stall = true;
+        }
+    }
+
+    totalCycles = currentCycle;
+
+
+  //---------------------------------------------      
+     /*   while (instructionsCompleted < maxInstructions) {
             currentCycle++;
             
             if (debugMode) {
@@ -677,8 +717,8 @@ void executeStage() {
         //   commitStage();
 
             // Update statistics
-            totalCycles = currentCycle;
-            
+            totalCycles = currentCycle;*/
+    //---------------------------------------------        
             // Safety break
             if (currentCycle > 50) {
                 cout << "Warning: Stopping after 50 cycles\n";
@@ -752,6 +792,65 @@ void executeStage() {
         cout << "Memory[0] = 10\n";
     }
     
+
+    void loadProgramFromFile() {
+    cout << "Loading program from program.txt and memory.txt...\n";
+
+    instructionQueue.clear();
+
+    // 1) Load instructions
+    ifstream progFile("program.txt");
+    if (!progFile.is_open()) {
+        cout << "Error: Cannot open program.txt\n";
+        return;
+    }
+
+    string line;
+    int address = 0;
+    while (getline(progFile, line)) {
+        // ignore empty / whitespace-only lines
+        bool empty = true;
+        for (char c : line) {
+            if (!isspace(static_cast<unsigned char>(c))) { empty = false; break; }
+        }
+        if (!empty) {
+            instructionQueue.push_back(parseInstruction(line, address++));
+        }
+    }
+    progFile.close();
+
+    // 2) Clear and load memory initial contents
+    for (int i = 0; i < MEMORY_SIZE; i++) {
+        memory[i] = 0;
+    }
+
+    ifstream memFile("memory.txt");
+    if (!memFile.is_open()) {
+        cout << "Warning: Cannot open memory.txt (starting with all zeros)\n";
+    } else {
+        int addr, value;
+        while (memFile >> addr >> value) {
+            if (addr >= 0 && addr < MEMORY_SIZE) {
+                memory[addr] = value;
+            }
+        }
+        memFile.close();
+    }
+
+    // 3) Reset registers
+    for (int i = 0; i < NUM_REGISTERS; i++) {
+        registerFile[i].value = 0;
+        registerFile[i].valid = true;
+        registerFile[i].robTag = -1;
+    }
+    registerFile[0].value = 0; // R0 always 0
+
+    cout << "Program loaded from files:\n";
+    for (int i = 0; i < (int)instructionQueue.size(); i++) {
+        cout << i << ": " << instructionQueue[i].label << "\n";
+    }
+}
+
     void printResults() {
         cout << "\n=== SIMULATION RESULTS ===\n\n";
         
@@ -824,12 +923,12 @@ void executeStage() {
         cin >> choice;
         cin.ignore();
         
-        if (choice == 'y' || choice == 'Y') {
-            loadDefaultProgram();
-        } else {
-            loadDefaultProgram();
-        }
-        
+           if (choice == 'y' || choice == 'Y') {
+        loadDefaultProgram();
+    } else {
+        loadProgramFromFile();
+    }
+
         simulate();
         printResults();
     }
@@ -843,6 +942,10 @@ int main() {
     
     TomasuloSimulator simulator;
     simulator.run();
-    
+ 
+    cout << "\n\nExecution finished. Press Enter to exit...";
+cin.ignore();
+cin.get();
+
     return 0;
 }
