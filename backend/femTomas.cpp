@@ -272,8 +272,9 @@ public:
                 string reg, offsetReg;
                 ss >> reg;
                 if (!reg.empty() && reg.back() == ',') reg.pop_back();
-                instr.rA = reg[1] - '0';
-                
+                // instr.rA = reg[1] - '0';
+                instr.rA = stoi(reg.substr(1));
+
                 ss >> offsetReg;
                 size_t paren = offsetReg.find('(');
                 if (paren != string::npos) {
@@ -383,7 +384,7 @@ public:
     
     int allocateROBEntry() {
         for (int i = 0; i < ROB_SIZE; i++) {
-            if (reorderBuffer[i].state == ISSUED) {
+            if (reorderBuffer[i].state == ISSUED && reorderBuffer[i].type == INVALID) {
                 reorderBuffer[i].state = EXECUTING_ROB;
                 return i;
             }
@@ -491,7 +492,9 @@ public:
             robEntry.isSpeculative = false;
             robEntry.speculativeBranchTag = -1;
         }
-        
+        if (instr.type == BEQ) {
+    lastUnresolvedBranchROB = robTag;
+}
         // Handle dependencies
         if (instr.type == LOAD) {
             // LOAD rA, offset(rB)
@@ -676,7 +679,13 @@ public:
         switch (rs.type) {
             case LOAD: {
                 int address = to16Bit(rs.vj + rs.offset);
-                result = memory[address];
+                // result = memory[address];
+                if (address < 0 || address >= MEMORY_SIZE) {
+    cerr << "Memory access out of bounds at address " << address << "\n";
+    result = 0;
+} else {
+    result = memory[address];
+}
                 if (debugMode) {
                     cout << "    LOAD: " << rs.vj << " + " << rs.offset << " = addr " 
                          << address << " -> " << result << "\n";
@@ -1145,9 +1154,12 @@ public:
         
         instructionTimings.clear();
         instructionTimings.resize(MEMORY_SIZE);
-        for (int i = 0; i < (int)instructionQueue.size(); i++) {
-            instructionTimings[instructionQueue[i].address].address = instructionQueue[i].address;
-        }
+      for (int i = 0; i < instructionQueue.size(); i++) {
+    instructionTimings[i].address = instructionQueue[i].address;
+}
+        // for (int i = 0; i < (int)instructionQueue.size(); i++) {
+        //     instructionTimings[instructionQueue[i].address].address = instructionQueue[i].address;
+        // }
         
         // Clear and load memory
         for (int i = 0; i < MEMORY_SIZE; i++) {
@@ -1192,7 +1204,11 @@ public:
              << setw(8) << "Finish" << setw(8) << "Write" 
              << setw(8) << "Commit" << "\n";
         cout << "============================================================================\n";
-        
+          cout << left << setw(5) << "Addr" << setw(20) << "Instruction" 
+         << setw(8) << "Issue" << setw(8) << "Exec" 
+         << setw(8) << "Finish" << setw(8) << "Write" 
+         << setw(8) << "Commit" << "\n";
+    cout << "============================================================================\n";
         for (const auto& instr : instructionQueue) {
             const InstructionTiming& timing = instructionTimings[instr.address];
             
