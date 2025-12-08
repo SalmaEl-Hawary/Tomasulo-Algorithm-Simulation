@@ -3,39 +3,380 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CPU Simulator GUI</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>Tomasulo Algorithm Simulator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+        }
+        h1, h2 {
+            text-align: center;
+        }
+        textarea {
+            display: block;
+            margin: 10px auto;
+            width: 80%;
+            height: 100px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            border: 1px solid #aaa;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #333;
+            color: #fff;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        button {
+            display: block;
+            margin: 15px auto;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+        pre {
+            background-color: #222;
+            color: #0f0;
+            padding: 10px;
+            height: 200px;
+            overflow-y: scroll;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .status {
+            text-align: center;
+            font-weight: bold;
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #e0e0e0;
+            border-radius: 5px;
+        }
+    </style>
 </head>
 <body>
-    <h1>CPU Simulator</h1>
-    <div class="container">
-        <!-- Program Input -->
-        <div class="left-panel">
-            <h3>Program</h3>
-            <textarea id="programInput" rows="15" cols="40" placeholder="Enter your instructions here..."></textarea>
-            <div class="buttons">
-                <button onclick="runSimulation()">Run</button>
-                <button onclick="stepSimulation()">Step</button>
-                <button onclick="resetSimulation()">Reset</button>
-            </div>
-        </div>
+    <h1>Tomasulo Algorithm Simulator</h1>
+    
+    <div class="status" id="status">Loading WebAssembly module...</div>
 
-        <!-- Simulator Tables -->
-        <div class="right-panel">
-            <h3>Registers</h3>
-            <table id="registerTable">
-                <tr><th>Register</th><th>Value</th></tr>
-            </table>
-
-            <h3>Memory</h3>
-            <table id="memoryTable">
-                <tr><th>Address</th><th>Value</th></tr>
-            </table>
-        </div>
+    <!-- Instructions input -->
+    <h2>Instructions Input</h2>
+    <textarea id="instructions" placeholder="Enter instructions here, one per line">
+LOAD R1, 0(R0)
+ADD R2, R1, R1
+STORE R2, 4(R0)
+BEQ R1, R0, 2
+ADD R3, R2, R1
+STORE R3, 8(R0)
+</textarea>
+    
+    <div class="button-group">
+        <button id="loadBtn">Load Instructions</button>
+        <button id="runBtn">Run Full Simulation</button>
+        <button id="stepBtn">Run Next Step</button>
+        <button id="resetBtn">Reset</button>
     </div>
 
-    <p id="status"></p>
+    <!-- Simulation Info -->
+    <h2>Simulation Information</h2>
+    <div id="simInfo">
+        <p><strong>Cycle:</strong> <span id="cycleCount">0</span></p>
+        <p><strong>Instructions Completed:</strong> <span id="completedCount">0</span></p>
+        <p><strong>IPC:</strong> <span id="ipc">0.000</span></p>
+    </div>
 
-    <script src="js/app.js"></script>
+    <!-- Tables -->
+    <h2>Registers</h2>
+    <table id="registerTable">
+        <thead>
+            <tr>
+                <th>Register</th>
+                <th>Value</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody id="registerBody">
+            <!-- Filled by JavaScript -->
+        </tbody>
+    </table>
+
+    <h2>Reservation Stations</h2>
+    <table id="rsTable">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Type</th>
+                <th>State</th>
+                <th>Busy</th>
+                <th>Vj</th>
+                <th>Vk</th>
+                <th>Qj</th>
+                <th>Qk</th>
+                <th>Dest</th>
+                <th>Cycles Left</th>
+            </tr>
+        </thead>
+        <tbody id="rsBody">
+            <!-- Filled by JavaScript -->
+        </tbody>
+    </table>
+
+    <h2>Reorder Buffer</h2>
+    <table id="robTable">
+        <thead>
+            <tr>
+                <th>Tag</th>
+                <th>Type</th>
+                <th>State</th>
+                <th>Dest</th>
+                <th>Value</th>
+                <th>Ready</th>
+                <th>Instruction</th>
+            </tr>
+        </thead>
+        <tbody id="robBody">
+            <!-- Filled by JavaScript -->
+        </tbody>
+    </table>
+
+    <!-- Memory Contents -->
+    <h2>Memory (First 10 Locations)</h2>
+    <table id="memoryTable">
+        <thead>
+            <tr>
+                <th>Address</th>
+                <th>Value</th>
+                <th>Address</th>
+                <th>Value</th>
+            </tr>
+        </thead>
+        <tbody id="memoryBody">
+            <!-- Filled by JavaScript -->
+        </tbody>
+    </table>
+
+    <!-- Simulation log -->
+    <h2>Simulation Log</h2>
+    <pre id="log">Initializing...</pre>
+
+    <!-- Configure Emscripten Module BEFORE loading index.js -->
+    <script>
+        // Configure the Emscripten module
+        var Module = {
+            locateFile: function(path) {
+                // Point to the correct location for .wasm file
+                if (path.endsWith('.wasm')) {
+                    return '../backend/' + path;
+                }
+                return path;
+            },
+            preRun: [],
+            postRun: [],
+            print: function(text) {
+                // Capture console output
+                console.log(text);
+                var log = document.getElementById('log');
+                if (log) {
+                    log.textContent += text + '\n';
+                    log.scrollTop = log.scrollHeight;
+                }
+            },
+            printErr: function(text) {
+                console.error(text);
+                var log = document.getElementById('log');
+                if (log) {
+                    log.textContent += 'ERROR: ' + text + '\n';
+                    log.scrollTop = log.scrollHeight;
+                }
+            },
+            onRuntimeInitialized: function() {
+                console.log("WebAssembly module initialized!");
+                document.getElementById('status').textContent = "Ready to simulate!";
+                document.getElementById('status').style.backgroundColor = "#d4edda";
+                document.getElementById('status').style.color = "#155724";
+                
+                // Initialize simulation
+                if (Module._initializeSimulation) {
+                    Module._initializeSimulation();
+                    updateDisplay();
+                }
+            },
+            noInitialRun: true  // Don't run main() automatically
+        };
+    </script>
+
+    <!-- Load Emscripten-generated JavaScript -->
+    <script src="../backend/index.js"></script>
+
+    <!-- Frontend application logic -->
+    <script>
+        // Wait for DOM and WASM to be ready
+        document.addEventListener('DOMContentLoaded', function() {
+            const status = document.getElementById('status');
+            const log = document.getElementById('log');
+            let simulationInitialized = false;
+            
+            // Initialize register table
+            initializeRegisterTable();
+            
+            // Button event listeners
+            document.getElementById('loadBtn').addEventListener('click', function() {
+                const instructions = document.getElementById('instructions').value;
+                log.textContent = "Loading instructions:\n" + instructions;
+                
+                if (Module._loadInstructions && Module.UTF8ToString) {
+                    // Convert JavaScript string to C string
+                    const bufferSize = Module.lengthBytesUTF8(instructions) + 1;
+                    const buffer = Module._malloc(bufferSize);
+                    Module.stringToUTF8(instructions, buffer, bufferSize);
+                    
+                    Module._loadInstructions(buffer);
+                    Module._free(buffer);
+                    
+                    log.textContent += "\nInstructions loaded successfully!";
+                    simulationInitialized = true;
+                    updateDisplay();
+                }
+            });
+            
+            document.getElementById('runBtn').addEventListener('click', function() {
+                if (!simulationInitialized) {
+                    log.textContent = "Please load instructions first!";
+                    return;
+                }
+                
+                log.textContent = "Running full simulation...\n";
+                status.textContent = "Running simulation...";
+                status.style.backgroundColor = "#fff3cd";
+                status.style.color = "#856404";
+                
+                if (Module._runFullSimulation) {
+                    Module._runFullSimulation();
+                    updateDisplay();
+                    status.textContent = "Simulation complete!";
+                    status.style.backgroundColor = "#d4edda";
+                    status.style.color = "#155724";
+                }
+            });
+            
+            document.getElementById('stepBtn').addEventListener('click', function() {
+                if (!simulationInitialized) {
+                    log.textContent = "Please load instructions first!";
+                    return;
+                }
+                
+                log.textContent = "Executing next cycle...\n";
+                status.textContent = "Executing cycle...";
+                status.style.backgroundColor = "#fff3cd";
+                status.style.color = "#856404";
+                
+                if (Module._executeCycle) {
+                    const continueSim = Module._executeCycle();
+                    updateDisplay();
+                    
+                    if (continueSim === 0) {
+                        status.textContent = "Simulation complete!";
+                        status.style.backgroundColor = "#d4edda";
+                        status.style.color = "#155724";
+                    } else {
+                        status.textContent = "Ready for next cycle";
+                        status.style.backgroundColor = "#d1ecf1";
+                        status.style.color = "#0c5460";
+                    }
+                }
+            });
+            
+            document.getElementById('resetBtn').addEventListener('click', function() {
+                log.textContent = "Resetting simulation...\n";
+                if (Module._resetSimulation) {
+                    Module._resetSimulation();
+                    simulationInitialized = false;
+                    updateDisplay();
+                    status.textContent = "Simulation reset. Load instructions to begin.";
+                    status.style.backgroundColor = "#f8d7da";
+                    status.style.color = "#721c24";
+                }
+            });
+            
+            // Initialize tables
+            function initializeRegisterTable() {
+                const tbody = document.getElementById('registerBody');
+                tbody.innerHTML = '';
+                for (let i = 0; i < 8; i++) {
+                    const row = tbody.insertRow();
+                    row.innerHTML = `
+                        <td>R${i}</td>
+                        <td id="regValue${i}">0</td>
+                        <td id="regStatus${i}">Ready</td>
+                    `;
+                }
+            }
+            
+            // Update the display with current simulation state
+            function updateDisplay() {
+                // Update cycle count and IPC if available
+                if (Module._getCycleCount) {
+                    const cycles = Module._getCycleCount();
+                    document.getElementById('cycleCount').textContent = cycles;
+                }
+                
+                if (Module._getCompletedCount) {
+                    const completed = Module._getCompletedCount();
+                    document.getElementById('completedCount').textContent = completed;
+                    
+                    // Calculate IPC
+                    const cycles = parseInt(document.getElementById('cycleCount').textContent) || 1;
+                    const ipc = completed / Math.max(cycles, 1);
+                    document.getElementById('ipc').textContent = ipc.toFixed(3);
+                }
+                
+                // Update registers if available
+                if (Module._getRegisterValue && Module._getRegisterStatus) {
+                    for (let i = 0; i < 8; i++) {
+                        const value = Module._getRegisterValue(i);
+                        const status = Module._getRegisterStatus(i);
+                        document.getElementById(`regValue${i}`).textContent = value;
+                        document.getElementById(`regStatus${i}`).textContent = status;
+                    }
+                }
+                
+                // Update memory if available
+                if (Module._getMemoryValue) {
+                    const tbody = document.getElementById('memoryBody');
+                    tbody.innerHTML = '';
+                    for (let i = 0; i < 10; i += 2) {
+                        const row = tbody.insertRow();
+                        const val1 = Module._getMemoryValue(i);
+                        const val2 = Module._getMemoryValue(i + 1);
+                        row.innerHTML = `
+                            <td>M[${i}]</td>
+                            <td>${val1}</td>
+                            <td>M[${i + 1}]</td>
+                            <td>${val2}</td>
+                        `;
+                    }
+                }
+            }
+            
+            // Periodically update display
+            setInterval(updateDisplay, 1000);
+        });
+    </script>
 </body>
 </html>

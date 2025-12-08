@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="en-us">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Tomasulo Algorithm Simulator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        
+        .simulation-controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .instructions-section {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .instructions-section h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        
+        #instructions {
+            width: 100%;
+            height: 200px;
+            font-family: monospace;
+            font-size: 14px;
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            resize: vertical;
+        }
+        
+        .controls-section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .control-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        button {
+            padding: 12px 20px;
+            font-size: 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        button:hover:not(:disabled) {
+            background: #0056b3;
+        }
+        
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        
+        button#runBtn {
+            background: #28a745;
+        }
+        
+        button#runBtn:hover:not(:disabled) {
+            background: #1e7e34;
+        }
+        
+        button#stepBtn {
+            background: #ffc107;
+            color: #212529;
+        }
+        
+        button#stepBtn:hover:not(:disabled) {
+            background: #e0a800;
+        }
+        
+        button#resetBtn {
+            background: #dc3545;
+        }
+        
+        button#resetBtn:hover:not(:disabled) {
+            background: #c82333;
+        }
+        
+        button#clearBtn {
+            background: #6f42c1;
+        }
+        
+        button#clearBtn:hover:not(:disabled) {
+            background: #5a32a3;
+        }
+        
+        .simulation-status {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border: 1px solid #ced4da;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-top: 10px;
+        }
+        
+        .status-item {
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .status-label {
+            font-size: 12px;
+            color: #6c757d;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        
+        .status-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #495057;
+        }
+        
+        .results-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 5px;
+            overflow: hidden;
+            box-shadow: 0 0 5px rgba(0,0,0,0.1);
+        }
+        
+        th {
+            background: #007bff;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        #output {
+            width: 100%;
+            height: 300px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            padding: 15px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border: none;
+            border-radius: 5px;
+            resize: vertical;
+            overflow-y: auto;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .alert-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .debug-info {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Tomasulo Algorithm Simulator</h1>
+        
+        <div class="simulation-controls">
+            <div class="instructions-section">
+                <h3>📝 Instructions Input</h3>
+                <textarea id="instructions" placeholder="Enter instructions here, one per line">
+LOAD R1, 0(R0)
+ADD R2, R1, R1
+STORE R2, 4(R0)
+BEQ R1, R0, 2
+ADD R3, R2, R1
+STORE R3, 8(R0)</textarea>
+                <button id="loadBtn" style="margin-top: 10px; width: 100%; background: #186c79;">
+                    📥 Load Instructions
+                </button>
+            </div>
+            
+            <div class="controls-section">
+                <h3>🎮 Simulation Controls</h3>
+                <div class="control-buttons">
+                    <button id="runBtn" disabled>▶️ Run Full Simulation</button>
+                    <button id="stepBtn" disabled>⏭️ Run Next Cycle</button>
+                    <button id="resetBtn">🔄 Reset Simulation</button>
+                    <button id="clearBtn">🗑️ Clear Output</button>
+                </div>
+                
+                <div class="simulation-status">
+                    <h3>📊 Simulation Status</h3>
+                    <div class="status-grid">
+                        <div class="status-item">
+                            <div class="status-label">Current Cycle</div>
+                            <div class="status-value" id="cycleCount">0</div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-label">Instructions</div>
+                            <div class="status-value" id="instructionCount">0</div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-label">IPC</div>
+                            <div class="status-value" id="ipc">0.000</div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-label">State</div>
+                            <div class="status-value" id="simState">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="alert alert-info" id="statusAlert">
+            <span id="statusText">Initializing WebAssembly module...</span>
+        </div>
+        
+        <div class="results-section">
+            <div>
+                <h3>📋 Registers</h3>
+                <table id="registerTable">
+                    <thead>
+                        <tr>
+                            <th>Register</th>
+                            <th>Value</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="registerBody">
+                        <!-- Will be populated by JavaScript -->
+                    </tbody>
+                </table>
+                
+                <h3 style="margin-top: 20px;">🏷️ Reservation Stations</h3>
+                <table id="rsTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Type</th>
+                            <th>State</th>
+                            <th>Busy</th>
+                            <th>Cycles Left</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rsBody">
+                        <!-- Will be populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div>
+                <h3>📊 Reorder Buffer</h3>
+                <table id="robTable">
+                    <thead>
+                        <tr>
+                            <th>Tag</th>
+                            <th>Type</th>
+                            <th>State</th>
+                            <th>Destination</th>
+                            <th>Ready</th>
+                        </tr>
+                    </thead>
+                    <tbody id="robBody">
+                        <!-- Will be populated by JavaScript -->
+                    </tbody>
+                </table>
+                
+                <h3 style="margin-top: 20px;">💾 Memory (First 10 locations)</h3>
+                <table id="memoryTable">
+                    <thead>
+                        <tr>
+                            <th>Address</th>
+                            <th>Value</th>
+                            <th>Address</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody id="memoryBody">
+                        <!-- Will be populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <h3>📤 Simulation Output</h3>
+        <textarea id="output" readonly></textarea>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <span id="loadingStatus">Loading WebAssembly module...</span>
+        </div>
+        
+        <div class="debug-info" id="debugInfo" style="display: none;">
+            Debug Info: <span id="debugText"></span>
+        </div>
+    </div>
+
+    <script type='text/javascript'>
+        // =============================================
+        // GLOBAL VARIABLES AND STATE
+        // =============================================
+        let Module = null;
+        let wasmLoaded = false;
+        let loadingTimeout = null;
+        
+        // DOM Elements
+        const outputElement = document.getElementById('output');
+        const statusAlert = document.getElementById('statusAlert');
+        const statusText = document.getElementById('statusText');
+        const loadingElement = document.getElementById('loading');
+        const loadingStatus = document.getElementById('loadingStatus');
+        const runBtn = document.getElementById('runBtn');
+        const stepBtn = document.getElementById('stepBtn');
+        const debugInfo = document.getElementById('debugInfo');
+        const debugText = document.getElementById('debugText');
+        
+        // =============================================
+        // UTILITY FUNCTIONS
+        // =============================================
+        function debugLog(message) {
+            console.log(`[DEBUG] ${message}`);
+            if (debugInfo) {
+                debugInfo.style.display = 'block';
+                debugText.textContent = message;
+            }
+        }
+        
+        function updateStatus(message, type = 'info') {
+            console.log(`[STATUS:${type.toUpperCase()}] ${message}`);
+            if (statusAlert && statusText) {
+                statusAlert.style.display = 'block';
+                statusAlert.className = `alert alert-${type}`;
+                statusText.textContent = message;
+            }
+        }
+        
+        function addOutput(text, isError = false) {
+            if (!outputElement) return;
+            
+            const prefix = isError ? '❌ ERROR: ' : '';
+            outputElement.value += prefix + text + "\n";
+            outputElement.scrollTop = outputElement.scrollHeight;
+        }
+        
+        function clearOutput() {
+            if (outputElement) {
+                outputElement.value = '';
+            }
+        }
+        
+        // =============================================
+        // TABLE INITIALIZATION
+        // =============================================
+        function initializeTables() {
+            debugLog('Initializing tables...');
+            
+            // Initialize register table
+            const registerBody = document.getElementById('registerBody');
+            if (registerBody) {
+                registerBody.innerHTML = '';
+                for (let i = 0; i < 8; i++) {
+                    const row = registerBody.insertRow();
+                    row.innerHTML = `
+                        <td>R${i}</td>
+                        <td id="regValue${i}">0</td>
+                        <td id="regStatus${i}">Ready</td>
+                    `;
+                }
+            }
+            
+            // Initialize reservation stations
+            const rsBody = document.getElementById('rsBody');
+            if (rsBody) {
+                rsBody.innerHTML = '';
+                const rsTypes = ['LOAD', 'LOAD', 'STORE', 'BEQ', 'BEQ', 'CALL/RET', 'ADD', 'ADD', 'ADD', 'ADD', 'NAND', 'NAND', 'MUL'];
+                for (let i = 0; i < rsTypes.length; i++) {
+                    const row = rsBody.insertRow();
+                    row.innerHTML = `
+                        <td>RS${i}</td>
+                        <td>${rsTypes[i]}</td>
+                        <td id="rsState${i}">IDLE</td>
+                        <td id="rsBusy${i}">No</td>
+                        <td id="rsCycles${i}">-</td>
+                    `;
+                }
+            }
+            
+            // Initialize ROB table
+            const robBody = document.getElementById('robBody');
+            if (robBody) {
+                robBody.innerHTML = '';
+                for (let i = 0; i < 8; i++) {
+                    const row = robBody.insertRow();
+                    row.innerHTML = `
+                        <td>ROB${i}</td>
+                        <td id="robType${i}">-</td>
+                        <td id="robState${i}">EMPTY</td>
+                        <td id="robDest${i}">-</td>
+                        <td id="robReady${i}">No</td>
+                    `;
+                }
+            }
+            
+            // Initialize memory table
+            const memoryBody = document.getElementById('memoryBody');
+            if (memoryBody) {
+                memoryBody.innerHTML = '';
+                for (let i = 0; i < 10; i += 2) {
+                    const row = memoryBody.insertRow();
+                    row.innerHTML = `
+                        <td>M[${i}]</td>
+                        <td id="memValue${i}">0</td>
+                        <td>M[${i + 1}]</td>
+                        <td id="memValue${i + 1}">0</td>
+                    `;
+                }
+            }
+        }
+        
+        function updateStats() {
+            document.getElementById('cycleCount').textContent = '0';
+            document.getElementById('instructionCount').textContent = '0';
+            document.getElementById('ipc').textContent = '0.000';
+        }
+        
+        // =============================================
+        // WASM MODULE CONFIGURATION
+        // =============================================
+        function initializeWASMModule() {
+            debugLog('Setting up WASM module configuration...');
+            
+            // Clear any existing timeout
+            if (loadingTimeout) {
+                clearTimeout(loadingTimeout);
+            }
+            
+            // Define the Module object that Emscripten will use
+            window.Module = {
+                // Print from C++ stdout
+                print: function(text) {
+                    console.log('WASM Output:', text);
+                    addOutput(text);
+                },
+                
+                // Print from C++ stderr
+                printErr: function(text) {
+                    console.error('WASM Error:', text);
+                    addOutput(text, true);
+                },
+                
+                // Called when WASM is fully loaded
+                onRuntimeInitialized: function() {
+                    debugLog('✅ WASM Runtime Initialized!');
+                    wasmLoaded = true;
+                    
+                    // Update UI
+                    loadingElement.style.display = 'none';
+                    document.getElementById('simState').textContent = 'Ready';
+                    runBtn.disabled = false;
+                    stepBtn.disabled = false;
+                    runBtn.textContent = '▶️ Run Full Simulation';
+                    
+                    // Show success message
+                    updateStatus('✅ WebAssembly module loaded successfully! Click "Run Full Simulation" to start.', 'success');
+                    
+                    // Add welcome message
+                    clearOutput();
+                    addOutput("=".repeat(60));
+                    addOutput("TOMASULO ALGORITHM SIMULATOR");
+                    addOutput("=".repeat(60));
+                    addOutput("");
+                    addOutput("✅ WebAssembly module loaded successfully!");
+                    addOutput("Ready to simulate Tomasulo algorithm.");
+                    addOutput("");
+                    addOutput("Instructions loaded in text area above.");
+                    addOutput("Click 'Run Full Simulation' to start.");
+                    addOutput("");
+                    
+                    // Log available functions
+                    const wasmFunctions = Object.keys(this).filter(k => k.startsWith('_') && typeof this[k] === 'function');
+                    debugLog(`Available WASM functions: ${wasmFunctions.length}`);
+                    console.log('Available WASM functions:', wasmFunctions);
+                    
+                    // Set global Module reference
+                    Module = this;
+                },
+                
+                // Optional: Show loading progress
+                setStatus: function(text) {
+                    if (loadingStatus) {
+                        loadingStatus.textContent = text;
+                    }
+                    debugLog(`Loading: ${text}`);
+                },
+                
+                // Error handling
+                onAbort: function(reason) {
+                    console.error('WASM Aborted:', reason);
+                    updateStatus(`❌ WASM module failed: ${reason}`, 'error');
+                    loadingElement.style.display = 'none';
+                }
+            };
+            
+            // Set loading timeout
+            loadingTimeout = setTimeout(function() {
+                if (!wasmLoaded) {
+                    debugLog('⚠️ WASM loading timeout');
+                    updateStatus('⚠️ WebAssembly is taking longer than expected to load...', 'warning');
+                }
+            }, 3000);
+            
+            // Final timeout check
+            setTimeout(function() {
+                if (!wasmLoaded) {
+                    console.error('❌ WASM failed to load within 10 seconds');
+                    updateStatus('❌ WebAssembly failed to load. Check browser console for errors.', 'error');
+                    loadingElement.style.display = 'none';
+                    document.getElementById('simState').textContent = 'Failed';
+                    
+                    addOutput("\n" + "❌".repeat(20));
+                    addOutput("ERROR: WebAssembly module failed to load!");
+                    addOutput("❌".repeat(20));
+                    addOutput("");
+                    addOutput("Possible issues:");
+                    addOutput("1. index.js or index.wasm file not found");
+                    addOutput("2. Emscripten compilation error");
+                    addOutput("3. Browser doesn't support WebAssembly");
+                    addOutput("4. Server not serving files correctly");
+                    addOutput("");
+                    addOutput("Open browser DevTools (F12) for more details.");
+                }
+            }, 10000);
+        }
+        
+        // =============================================
+        // SIMULATION FUNCTIONS
+        // =============================================
+        function runSimulation() {
+            if (!wasmLoaded || !Module || !Module._main) {
+                updateStatus('❌ Simulation module not ready. Please wait for WASM to load.', 'error');
+                return;
+            }
+            
+            updateStatus('▶️ Running simulation...', 'warning');
+            document.getElementById('simState').textContent = 'Running';
+            
+            // Add simulation header
+            addOutput("\n" + "=".repeat(60));
+            addOutput("SIMULATION STARTED");
+            addOutput("=".repeat(60));
+            addOutput("");
+            
+            try {
+                // Run the C++ main function
+                debugLog('Calling Module._main()...');
+                Module._main();
+                
+                // Update status after completion
+                document.getElementById('simState').textContent = 'Complete';
+                updateStatus('✅ Simulation completed successfully!', 'success');
+                
+                // Add completion message
+                addOutput("\n" + "=".repeat(60));
+                addOutput("SIMULATION COMPLETE");
+                addOutput("=".repeat(60));
+                
+            } catch (error) {
+                // Handle errors
+                console.error('Simulation error:', error);
+                document.getElementById('simState').textContent = 'Error';
+                updateStatus(`❌ Simulation error: ${error.message}`, 'error');
+                addOutput(`\n❌ Simulation error: ${error.message}`);
+            }
+        }
+        
+        // =============================================
+        // BUTTON EVENT HANDLERS
+        // =============================================
+        function setupEventListeners() {
+            debugLog('Setting up event listeners...');
+            
+            // Run Simulation Button
+            runBtn.addEventListener('click', runSimulation);
+            
+            // Step Button
+            stepBtn.addEventListener('click', function() {
+                updateStatus('⏭️ Step-by-step execution not yet implemented', 'warning');
+                addOutput("⏭️ Step function would execute one simulation cycle");
+            });
+            
+            // Load Instructions Button
+            document.getElementById('loadBtn').addEventListener('click', function() {
+                const instructions = document.getElementById('instructions').value.trim();
+                const instructionCount = instructions.split('\n').filter(line => line.trim()).length;
+                
+                updateStatus(`📥 Loaded ${instructionCount} instruction(s)`, 'success');
+                addOutput(`\n📥 Loaded ${instructionCount} instruction(s):`);
+                addOutput(instructions);
+                addOutput("");
+            });
+            
+            // Reset Button
+            document.getElementById('resetBtn').addEventListener('click', function() {
+                initializeTables();
+                updateStats();
+                document.getElementById('simState').textContent = wasmLoaded ? 'Ready' : 'Loading...';
+                updateStatus('🔄 Simulation reset', 'success');
+                addOutput("\n🔄 Simulation reset");
+                addOutput("Ready for new simulation.\n");
+            });
+            
+            // Clear Output Button
+            document.getElementById('clearBtn').addEventListener('click', function() {
+                clearOutput();
+                updateStatus('🗑️ Output cleared', 'success');
+                addOutput("🗑️ Output cleared");
+            });
+        }
+        
+        // =============================================
+        // PAGE INITIALIZATION
+        // =============================================
+        function initializePage() {
+            debugLog('Initializing page...');
+            
+            // Show initial loading state
+            loadingElement.style.display = 'block';
+            statusAlert.style.display = 'block';
+            updateStatus('⏳ Loading WebAssembly module...', 'info');
+            
+            // Initialize tables and stats
+            initializeTables();
+            updateStats();
+            
+            // Setup event listeners
+            setupEventListeners();
+            
+            // Initialize WASM module
+            initializeWASMModule();
+            
+            debugLog('Page initialization complete');
+        }
+        
+        // =============================================
+        // ERROR HANDLING
+        // =============================================
+        window.addEventListener('error', function(event) {
+            console.error('Global JavaScript error:', event.error);
+            updateStatus(`❌ JavaScript error: ${event.message}`, 'error');
+        });
+        
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('Unhandled Promise rejection:', event.reason);
+            updateStatus(`❌ Unhandled Promise: ${event.reason}`, 'error');
+        });
+        
+        // =============================================
+        // START EVERYTHING WHEN DOM IS READY
+        // =============================================
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM fully loaded and parsed');
+            initializePage();
+        });
+        
+        // =============================================
+        // FALLBACK: If DOMContentLoaded already fired
+        // =============================================
+        if (document.readyState === 'loading') {
+            // Still loading, wait for DOMContentLoaded
+            document.addEventListener('DOMContentLoaded', initializePage);
+        } else {
+            // DOM already loaded, initialize now
+            initializePage();
+        }
+    </script>
+    
+    <!-- Load Emscripten-generated JavaScript -->
+    <!-- IMPORTANT: This MUST be loaded AFTER our Module configuration -->
+    <script src="index.js"></script>
+    
+    <!-- Fallback for browsers without WASM support -->
+    <script>
+        if (!('WebAssembly' in window)) {
+            document.getElementById('loading').innerHTML = 
+                '<div style="color: #721c24; background: #f8d7da; padding: 20px; border-radius: 5px;">' +
+                '<h3>❌ WebAssembly Not Supported</h3>' +
+                '<p>Your browser does not support WebAssembly. Please use:</p>' +
+                '<ul>' +
+                '<li>Chrome 57+</li>' +
+                '<li>Firefox 52+</li>' +
+                '<li>Safari 11+</li>' +
+                '<li>Edge 16+</li>' +
+                '</ul>' +
+                '</div>';
+        }
+    </script>
+</body>
+</html>
