@@ -116,7 +116,9 @@ private:
     int branchMispredictions;
     int totalCycles;
     int programStartAddress;
-    
+    int commitCyclesRemaining = 0;
+int committingROBIndex = -1;
+
     int programCounter;
     bool stall;
     bool debugMode;
@@ -628,50 +630,66 @@ public:
             }
         }
     }
-    
+  
+
     void executeStage() {
-        for (auto& rs : reservationStations) {
-            // 1. Check if READY to start execution
-            if (rs.state == BUSY && rs.qj == -1 && rs.qk == -1 && !rs.startedExecution) {
-                rs.state = EXECUTING;
-                rs.startedExecution = true;
-                reorderBuffer[rs.robTag].startExecCycle = currentCycle;
-                instructionTimings[reorderBuffer[rs.robTag].instructionAddress].startExecCycle = currentCycle;
-                if (debugMode) {
-                    cout << "Cycle " << currentCycle << ": Start exec RS" << rs.id 
-                         << " (ROB" << rs.robTag << "), cycles=" << rs.cyclesRemaining << "\n";
-                }
-                continue;
+    for (auto& rs : reservationStations) {
+        // 1. Check if READY to start execution
+        if (rs.state == BUSY && rs.qj == -1 && rs.qk == -1 && !rs.startedExecution) {
+            rs.state = EXECUTING;
+            rs.startedExecution = true;
+            reorderBuffer[rs.robTag].startExecCycle = currentCycle;
+            instructionTimings[reorderBuffer[rs.robTag].instructionAddress].startExecCycle = currentCycle;
+            if (debugMode) {
+                cout << "Cycle " << currentCycle << ": Start exec RS " << rs.id 
+                     << " ROB " << rs.robTag << ", cycles=" << rs.cyclesRemaining << "\n";
             }
             
-            // 2. Continue execution for already executing RS
-            if (rs.state == EXECUTING && rs.cyclesRemaining > 0) {
-                rs.cyclesRemaining--;
-                
-                if (debugMode && rs.cyclesRemaining > 0) {
-                    cout << "  RS" << rs.id << " exec, " << rs.cyclesRemaining << " cycles left\n";
+            // For 1-cycle instructions, complete immediately
+            if (rs.cyclesRemaining == 1) {
+                int result = executeInstruction(rs);
+                ROBEntry& entry = reorderBuffer[rs.robTag];
+                entry.value = to16Bit(result);
+                entry.endExecCycle = currentCycle;
+                instructionTimings[entry.instructionAddress].endExecCycle = currentCycle;
+                entry.ready = true;
+                rs.state = WRITING;
+                rs.cyclesRemaining = 0;
+                if (debugMode) {
+                    cout << "Cycle " << currentCycle << ": Finish exec RS " << rs.id 
+                         << ", result=" << entry.value << "\n";
                 }
-                
-                if (rs.cyclesRemaining == 0) {
-                    int result = executeInstruction(rs);
-                    ROBEntry& entry = reorderBuffer[rs.robTag];
-                    entry.value = to16Bit(result);
-                    entry.endExecCycle = currentCycle;
-                    instructionTimings[entry.instructionAddress].endExecCycle = currentCycle;
-                    entry.ready = true;
-                    rs.state = WRITING;
-                    
-                    if (debugMode) {
-                        cout << "Cycle " << currentCycle << ": Finish exec RS" << rs.id 
-                             << ", result=" << entry.value << "\n";
-                    }
+                continue;  // Skip the rest for 1-cycle instructions
+            }
+            // For multi-cycle instructions, don't continue - fall through to decrement
+        }
+
+        // 2. Continue execution for multi-cycle instructions
+        if (rs.state == EXECUTING && rs.cyclesRemaining > 0) {
+            if (debugMode && rs.cyclesRemaining > 0) {
+                cout << "RS " << rs.id << " exec, " << rs.cyclesRemaining << " cycles left\n";
+            }
+            
+            if (rs.cyclesRemaining == 1) {
+                // Finish execution in THIS cycle
+                int result = executeInstruction(rs);
+                ROBEntry& entry = reorderBuffer[rs.robTag];
+                entry.value = to16Bit(result);
+                entry.endExecCycle = currentCycle;
+                instructionTimings[entry.instructionAddress].endExecCycle = currentCycle;
+                entry.ready = true;
+                rs.state = WRITING;
+                if (debugMode) {
+                    cout << "Cycle " << currentCycle << ": Finish exec RS " << rs.id 
+                         << ", result=" << entry.value << "\n";
                 }
             }
-            else if (rs.state == BUSY && debugMode) {
-                cout << "  RS" << rs.id << " waiting: qj=" << rs.qj << ", qk=" << rs.qk << "\n";
-            }
+            
+            rs.cyclesRemaining--;
         }
     }
+}
+
     
     int executeInstruction(ReservationStation& rs) {
         int result = 0;
@@ -755,7 +773,7 @@ public:
     int getCyclesForType(InstructionType type) {
         switch (type) {
             case LOAD: return 6;      // 2 (address) + 4 (memory)
-            case STORE: return 6;     // 2 (address) + 4 (memory)
+            case STORE: return 2;     // 2 (address) + 4 (memory)
             case BEQ: return 1;       // Compare + compute target
             case CALL: return 1;      // Compute target + store return
             case RET: return 1;       // Branch to R1
@@ -897,152 +915,89 @@ public:
             }
         }
     }
+  
     
-    void commitStage() {
-        for (int i = 0; i < ROB_SIZE; i++) {
-            ROBEntry& entry = reorderBuffer[i];
-            if (entry.type != INVALID && entry.state == EXECUTING_ROB && 
-                entry.ready && entry.writeCycle < currentCycle) {
-                
-                // Check for branch misprediction FIRST
-                if (entry.type == BEQ && entry.value == 1) {
-                    if (debugMode) {
-                        cout << "Cycle " << currentCycle << ": Commit ROB" << i
-                             << " (BEQ MISPREDICTION - FLUSHING)\n";
-                    }
-                    
-                    branchMispredictions++;
-                    
-                    // Flush all speculative instructions
-                    flushSpeculativeInstructions(i);
-                    
-                    // Calculate branch target and set redirection
-                    int branchPC = entry.instructionAddress;
-                    int branchOffset = 0;
-                    
-                    // Find the original BEQ instruction to get its offset
-                    for (const auto& instr : instructionQueue) {
-                        if (instr.address == branchPC && instr.type == BEQ) {
-                            branchOffset = instr.offset;
-                            break;
-                        }
-                    }
-                    
-                    // BEQ target: PC + 1 + offset
-                    int targetAddress = branchPC + 1 + branchOffset;
-                    
-                    if (debugMode) {
-                        cout << "  Branch taken: PC=" << branchPC 
-                             << " + 1 + offset(" << branchOffset 
-                             << ") = target address " << targetAddress << "\n";
-                    }
-                    
-                    // Set redirection flags for next cycle
-                    branchMispredicted = true;
-                    branchTarget = targetAddress;
-                    
-                    // Commit the branch itself
-                    entry.commitCycle = currentCycle;
-                    instructionTimings[entry.instructionAddress].commitCycle = currentCycle;
-                    instructionTimings[entry.instructionAddress].committed = true;
-                    instructionsCompleted++;
-                    
-                    // Clear unresolved branch tracking
-                    if (lastUnresolvedBranchROB == i) {
-                        lastUnresolvedBranchROB = -1;
-                    }
-                    
-                    // Free ROB entry
-                    entry.state = ISSUED;
-                    entry.type = INVALID;
-                    entry.ready = false;
-                    
-                    break;  // One commit per cycle
-                }
-                
-                // Check for CALL/RET redirection
-                if (entry.type == CALL || entry.type == RET) {
-                    // CALL/RET always redirects
-                    if (debugMode) {
-                        cout << "Cycle " << currentCycle << ": Commit ROB" << i
-                             << " (" << instructionTypeToString(entry.type) << " - REDIRECTING)\n";
-                    }
-                    
-                    // Calculate target address
-                    int targetAddress;
-                    if (entry.type == CALL) {
-                        // CALL target: PC + 1 + offset (use callOffset stored in ROB)
-                        targetAddress = entry.instructionAddress + 1 + entry.callOffset;
-                    } else { // RET
-                        // RET target: value in R1 (stored in entry.value)
-                        targetAddress = entry.value;
-                    }
-                    
-                    // Set redirection
-                    branchMispredicted = true;
-                    branchTarget = targetAddress;
-                    
-                    if (debugMode) {
-                        cout << "  Redirecting to address " << targetAddress << "\n";
-                    }
-                }
-                
-                // Skip committing if speculative on mispredicted branch
-                if (entry.isSpeculative && entry.speculativeBranchTag != -1) {
-                    ROBEntry& branchEntry = reorderBuffer[entry.speculativeBranchTag];
-                    if (branchEntry.type == BEQ && branchEntry.ready && branchEntry.value == 1) {
-                        // Skip this instruction
-                        if (debugMode) {
-                            cout << "Cycle " << currentCycle << ": SKIP commit ROB" << i
-                                 << " (speculative on mispredicted branch)\n";
-                        }
-                        entry.state = ISSUED;
-                        entry.type = INVALID;
-                        entry.ready = false;
-                        entry.isSpeculative = false;
-                        entry.speculativeBranchTag = -1;
-                        continue;
-                    }
-                }
-                
-                // Normal commit
+void commitStage() {
+    // If already committing a store, continue the multi-cycle commit
+    if (commitCyclesRemaining > 0) {
+        commitCyclesRemaining--;
+        if (commitCyclesRemaining == 0) {
+            // Finish the store commit
+            ROBEntry& entry = reorderBuffer[committingROBIndex];
+            
+            // Write to memory
+            if (entry.destination >= 0 && entry.destination < MEMORY_SIZE) {
+                memory[entry.destination] = entry.value;
                 if (debugMode) {
-                    cout << "Cycle " << currentCycle << ": Commit ROB" << i
-                         << " (" << instructionTypeToString(entry.type) << ")\n";
+                    cout << "Cycle " << currentCycle << ": Store to memory[" 
+                         << entry.destination << "] = " << entry.value << "\n";
                 }
+            }
+            
+            // Mark committed
+            entry.commitCycle = currentCycle;
+            instructionTimings[entry.instructionAddress].commitCycle = currentCycle;
+            instructionTimings[entry.instructionAddress].committed = true;
+            instructionsCompleted++;
+            
+            // Free ROB entry
+            entry.state = ISSUED;
+            entry.type = INVALID;
+            entry.ready = false;
+            entry.destination = -1;
+            committingROBIndex = -1;
+        }
+        return; // Don't commit anything else while store is committing
+    }
+    
+    // Try to commit the instruction at the head of ROB
+    for (int i = 0; i < ROB_SIZE; i++) {
+        ROBEntry& entry = reorderBuffer[i];
+        if (entry.type != INVALID && entry.state == EXECUTING_ROB && 
+            entry.ready && entry.writeCycle < currentCycle) {
+            
+            // Check for branch misprediction FIRST
+            if (entry.type == BEQ && entry.value == 1) {
+                if (debugMode) {
+                    cout << "Cycle " << currentCycle 
+                         << ": Commit ROB " << i << " BEQ MISPREDICTION - FLUSHING\n";
+                }
+                branchMispredictions++;
                 
-                // Update architectural state at commit time
-                if (entry.destination >= 0 && entry.destination < NUM_REGISTERS) {
-                    if (registerFile[entry.destination].robTag == i) {
-                        registerFile[entry.destination].value = entry.value;
-                        registerFile[entry.destination].valid = true;
-                        registerFile[entry.destination].robTag = -1;
-                        if (debugMode) {
-                            cout << "    Update R" << entry.destination 
-                                 << " = " << entry.value << "\n";
-                        }
+                // Flush all speculative instructions
+                flushSpeculativeInstructions(i);
+                
+                // Calculate branch target and set redirection
+                int branchPC = entry.instructionAddress;
+                int branchOffset = 0;
+                
+                // Find the original BEQ instruction to get its offset
+                for (const auto& instr : instructionQueue) {
+                    if (instr.address == branchPC && instr.type == BEQ) {
+                        branchOffset = instr.offset;
+                        break;
                     }
                 }
                 
-                // Handle STORE - write to memory at commit time
-                if (entry.type == STORE) {
-                    if (entry.destination >= 0 && entry.destination < MEMORY_SIZE) {
-                        memory[entry.destination] = entry.value;
-                        if (debugMode) {
-                            cout << "    Store to memory[" << entry.destination 
-                                 << "] = " << entry.value << "\n";
-                        }
-                    }
+                // BEQ target = PC + 1 + offset
+                int targetAddress = branchPC + 1 + branchOffset;
+                if (debugMode) {
+                    cout << "Branch taken: PC=" << branchPC << "+1+offset=" 
+                         << branchOffset << " -> target address " << targetAddress << "\n";
                 }
                 
-                // Mark committed and update timing
+                // Set redirection flags for next cycle
+                branchMispredicted = true;
+                branchTarget = targetAddress;
+                
+                // Commit the branch itself
                 entry.commitCycle = currentCycle;
                 instructionTimings[entry.instructionAddress].commitCycle = currentCycle;
                 instructionTimings[entry.instructionAddress].committed = true;
                 instructionsCompleted++;
                 
-                // Clear unresolved branch tracking if this was a branch
-                if (entry.type == BEQ && lastUnresolvedBranchROB == i) {
+                // Clear unresolved branch tracking
+                if (lastUnresolvedBranchROB == i) {
                     lastUnresolvedBranchROB = -1;
                 }
                 
@@ -1050,13 +1005,105 @@ public:
                 entry.state = ISSUED;
                 entry.type = INVALID;
                 entry.ready = false;
-                entry.destination = -1;
-                
-                break;  // One commit per cycle
+                break; // One commit per cycle
             }
+            
+            // Check for CALL/RET redirection
+            if (entry.type == CALL || entry.type == RET) {
+                if (debugMode) {
+                    cout << "Cycle " << currentCycle << ": Commit ROB " << i << " " 
+                         << instructionTypeToString(entry.type) << " - REDIRECTING\n";
+                }
+                
+                // Calculate target address
+                int targetAddress;
+                if (entry.type == CALL) {
+                    // CALL: target = PC + 1 + offset (use callOffset stored in ROB)
+                    targetAddress = entry.instructionAddress + 1 + entry.callOffset;
+                } else {
+                    // RET: target = value in R1 (stored in entry.value)
+                    targetAddress = entry.value;
+                }
+                
+                // Set redirection
+                branchMispredicted = true;
+                branchTarget = targetAddress;
+                if (debugMode) {
+                    cout << "Redirecting to address " << targetAddress << "\n";
+                }
+            }
+            
+            // Skip committing if speculative on mispredicted branch
+            if (entry.isSpeculative && entry.speculativeBranchTag != -1) {
+                ROBEntry& branchEntry = reorderBuffer[entry.speculativeBranchTag];
+                if (branchEntry.type == BEQ && branchEntry.ready && branchEntry.value == 1) {
+                    // Skip this instruction
+                    if (debugMode) {
+                        cout << "Cycle " << currentCycle << ": SKIP commit ROB " << i 
+                             << " - speculative on mispredicted branch\n";
+                    }
+                    entry.state = ISSUED;
+                    entry.type = INVALID;
+                    entry.ready = false;
+                    entry.isSpeculative = false;
+                    entry.speculativeBranchTag = -1;
+                    continue;
+                }
+            }
+            
+            // Handle STORE - takes 4 cycles to commit
+            if (entry.type == STORE) {
+                if (debugMode) {
+                    cout << "Cycle " << currentCycle << ": Start commit ROB " << i 
+                         << " " << instructionTypeToString(entry.type) 
+                         << " (4 cycles for memory write)\n";
+                }
+                commitCyclesRemaining = 4;
+                committingROBIndex = i;
+                return; // Start multi-cycle commit
+            }
+            
+            // Normal commit (instant for non-STORE instructions)
+            if (debugMode) {
+                cout << "Cycle " << currentCycle << ": Commit ROB " << i << " " 
+                     << instructionTypeToString(entry.type) << "\n";
+            }
+            
+            // Update architectural state at commit time
+            if (entry.destination >= 0 && entry.destination < NUM_REGISTERS) {
+                if (registerFile[entry.destination].robTag == i) {
+                    registerFile[entry.destination].value = entry.value;
+                    registerFile[entry.destination].valid = true;
+                    registerFile[entry.destination].robTag = -1;
+                    if (debugMode) {
+                        cout << "  Update R" << entry.destination << " = " 
+                             << entry.value << "\n";
+                    }
+                }
+            }
+            
+            // Mark committed and update timing
+            entry.commitCycle = currentCycle;
+            instructionTimings[entry.instructionAddress].commitCycle = currentCycle;
+            instructionTimings[entry.instructionAddress].committed = true;
+            instructionsCompleted++;
+            
+            // Clear unresolved branch tracking if this was a branch
+            if (entry.type == BEQ && lastUnresolvedBranchROB == i) {
+                lastUnresolvedBranchROB = -1;
+            }
+            
+            // Free ROB entry
+            entry.state = ISSUED;
+            entry.type = INVALID;
+            entry.ready = false;
+            entry.destination = -1;
+            
+            break; // One commit per cycle
         }
     }
-    
+}
+
     string instructionTypeToString(InstructionType type) {
         switch (type) {
             case LOAD: return "LOAD";
@@ -1198,6 +1245,11 @@ public:
         cout << "\n=== SIMULATION RESULTS ===\n\n";
         
         cout << "Instruction Timeline:\n";
+        cout << "============================================================================\n";
+        cout << left << setw(5) << "Addr" << setw(20) << "Instruction" 
+             << setw(8) << "Issue" << setw(8) << "Exec" 
+             << setw(8) << "Finish" << setw(8) << "Write" 
+             << setw(8) << "Commit" << "\n";
         cout << "============================================================================\n";
           cout << left << setw(5) << "Addr" << setw(20) << "Instruction" 
          << setw(8) << "Issue" << setw(8) << "Exec" 
