@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CPU Simulator GUI</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <h1>CPU Simulator</h1>
+    <div class="container">
+        <!-- Program Input -->
+        <div class="left-panel">
+            <h3>Program</h3>
+            <textarea id="programInput" rows="15" cols="40" placeholder="Enter your instructions here..."></textarea>
+            <div class="buttons">
+                <button onclick="runSimulation()">Run</button>
+                <button onclick="stepSimulation()">Step</button>
+                <button onclick="resetSimulation()">Reset</button>
+            </div>
+        </div>
+
+        <!-- Simulator Tables -->
+        <div class="right-panel">
+            <h3>Registers</h3>
+            <table id="registerTable">
+                <tr><th>Register</th><th>Value</th></tr>
+            </table>
+
+            <h3>Memory</h3>
+            <table id="memoryTable">
+                <tr><th>Address</th><th>Value</th></tr>
+            </table>
+        </div>
+    </div>
+
+    <p id="status"></p>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
