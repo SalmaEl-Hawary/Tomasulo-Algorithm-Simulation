@@ -181,7 +181,7 @@ public:
         
         programCounter = 0;
         stall = false;
-        debugMode = true;  // Set to false for cleaner output
+        debugMode = false;  // Set to false for cleaner output
     }
     
     void initializeInstructionMap() {
@@ -629,61 +629,50 @@ public:
         }
     }
     
-   void executeStage() {
-    for (auto& rs : reservationStations) {
-        // 1. Check if READY to start execution
-        if (rs.state == BUSY && rs.qj == -1 && rs.qk == -1 && !rs.startedExecution) {
-            rs.state = EXECUTING;
-            rs.startedExecution = true;
-            int robIdx = rs.robTag;
-            int instrAddr = reorderBuffer[robIdx].instructionAddress;
-            
-            reorderBuffer[rs.robTag].startExecCycle = currentCycle;
-            instructionTimings[reorderBuffer[rs.robTag].instructionAddress].startExecCycle = currentCycle;
-            
-            // Pre-calculate expected end (optional)
-            reorderBuffer[robIdx].endExecCycle = currentCycle + rs.cyclesRemaining - 1;
-            instructionTimings[instrAddr].endExecCycle = reorderBuffer[robIdx].endExecCycle;
-                        rs.cyclesRemaining--;  // This cycle counts as execution
-
-            if (debugMode) {
-                cout << "Cycle " << currentCycle << ": Start exec RS" << rs.id 
-                     << " (ROB" << rs.robTag << "), cycles=" << rs.cyclesRemaining << "\n";
-            }
-            continue;
-        }
-        
-        // 2. Continue execution for already executing RS
-        if (rs.state == EXECUTING && rs.cyclesRemaining > 0) {
-            // Check if this is the LAST cycle
-            if (rs.cyclesRemaining == 1) {
-                // This is the last cycle - execute and finish
-                int result = executeInstruction(rs);
-                ROBEntry& entry = reorderBuffer[rs.robTag];
-                entry.value = to16Bit(result);
-                entry.endExecCycle = currentCycle;  // Finishes at END of this cycle
-                instructionTimings[entry.instructionAddress].endExecCycle = currentCycle;
-                entry.ready = true;
-                rs.state = WRITING;
-                rs.cyclesRemaining = 0;  // Mark as done
-                
+    void executeStage() {
+        for (auto& rs : reservationStations) {
+            // 1. Check if READY to start execution
+            if (rs.state == BUSY && rs.qj == -1 && rs.qk == -1 && !rs.startedExecution) {
+                rs.state = EXECUTING;
+                rs.startedExecution = true;
+                reorderBuffer[rs.robTag].startExecCycle = currentCycle;
+                instructionTimings[reorderBuffer[rs.robTag].instructionAddress].startExecCycle = currentCycle;
                 if (debugMode) {
-                    cout << "Cycle " << currentCycle << ": Finish exec RS" << rs.id 
-                         << ", result=" << entry.value << "\n";
+                    cout << "Cycle " << currentCycle << ": Start exec RS" << rs.id 
+                         << " (ROB" << rs.robTag << "), cycles=" << rs.cyclesRemaining << "\n";
                 }
-            } else {
-                // Still executing, just decrement counter
+                continue;
+            }
+            
+            // 2. Continue execution for already executing RS
+            if (rs.state == EXECUTING && rs.cyclesRemaining > 0) {
                 rs.cyclesRemaining--;
+                
                 if (debugMode && rs.cyclesRemaining > 0) {
                     cout << "  RS" << rs.id << " exec, " << rs.cyclesRemaining << " cycles left\n";
                 }
+                
+                if (rs.cyclesRemaining == 0) {
+                    int result = executeInstruction(rs);
+                    ROBEntry& entry = reorderBuffer[rs.robTag];
+                    entry.value = to16Bit(result);
+                    entry.endExecCycle = currentCycle;
+                    instructionTimings[entry.instructionAddress].endExecCycle = currentCycle;
+                    entry.ready = true;
+                    rs.state = WRITING;
+                    
+                    if (debugMode) {
+                        cout << "Cycle " << currentCycle << ": Finish exec RS" << rs.id 
+                             << ", result=" << entry.value << "\n";
+                    }
+                }
+            }
+            else if (rs.state == BUSY && debugMode) {
+                cout << "  RS" << rs.id << " waiting: qj=" << rs.qj << ", qk=" << rs.qk << "\n";
             }
         }
-        else if (rs.state == BUSY && debugMode) {
-            cout << "  RS" << rs.id << " waiting: qj=" << rs.qj << ", qk=" << rs.qk << "\n";
-        }
     }
-}
+    
     int executeInstruction(ReservationStation& rs) {
         int result = 0;
         
@@ -726,7 +715,7 @@ public:
                 int target = result + rs.offset;
                 reorderBuffer[rs.robTag].value = to16Bit(target);  // Store target in value field
                 if (debugMode) {
-                    cout << "  CALL: return addr=" << result << ", target=" << target << "\n";
+                    cout << "    CALL: return addr=" << result << ", target=" << target << "\n";
                 }
                 break;
             }
@@ -734,7 +723,7 @@ public:
                 // Branch to address in R1
                 result = rs.vj;
                 if (debugMode) {
-                    cout << "RET: jumping to " << result << "\n";
+                    cout << "    RET: jumping to " << result << "\n";
                 }
                 break;
             }
@@ -856,6 +845,7 @@ public:
             if (debugMode) {
                 cout << "\n--- Cycle " << currentCycle << " ---\n";
             }
+
             commitStage();  // May set branchMispredicted=true and branchTarget
             writeResultStage();
             executeStage();
@@ -1208,11 +1198,6 @@ public:
         cout << "\n=== SIMULATION RESULTS ===\n\n";
         
         cout << "Instruction Timeline:\n";
-        cout << "============================================================================\n";
-        cout << left << setw(5) << "Addr" << setw(20) << "Instruction" 
-             << setw(8) << "Issue" << setw(8) << "Exec" 
-             << setw(8) << "Finish" << setw(8) << "Write" 
-             << setw(8) << "Commit" << "\n";
         cout << "============================================================================\n";
           cout << left << setw(5) << "Addr" << setw(20) << "Instruction" 
          << setw(8) << "Issue" << setw(8) << "Exec" 
