@@ -1654,7 +1654,6 @@ void printROB() {
     }
 };
 
-// ==================== Main Function ====================
 int main() {
     cout << "==============================================\n";
     cout << "CSCE 3301 - Computer Architecture - Fall 2025\n";
