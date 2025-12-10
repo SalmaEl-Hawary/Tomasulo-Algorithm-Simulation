@@ -458,6 +458,16 @@ public:
     }
     
     bool issueInstruction(Instruction& instr) {
+        
+         if (instructionTimings[instr.address].issueCycle > 0) {
+        if (debugMode) {
+            cout << "  Instruction at address " << instr.address 
+                 << " already issued at cycle " 
+                 << instructionTimings[instr.address].issueCycle 
+                 << ", skipping re-issue\n";
+        }
+        return true;  // Return true so nextInstructionToIssue advances
+    }
         int robTag = allocateROBEntry();
         if (robTag == -1) {
             if (debugMode) cout << "  ROB full\n";
@@ -794,8 +804,8 @@ int executeInstruction(ReservationStation& rs) {
             case LOAD: return 6;      // 2 (address) + 4 (memory)
             case STORE: return 2;     // 2 (address) + 4 (memory)
             case BEQ: return 1;       // Compare + compute target
-            case CALL: return 1;      // Compute target + store return
-            case RET: return 1;       // Branch to R1
+            case CALL: return 2;      // Compute target + store return
+            case RET: return 2;       // Branch to R1
             case ADD: return 2;
             case SUB: return 2;
             case NAND: return 1;
