@@ -2013,7 +2013,6 @@ int main()
     cout << "CSCE 3301 - Computer Architecture - Fall 2025\n";
     cout << "Project 2: femTomas - Tomasulo Algorithm Simulator\n";
     cout << "==============================================\n\n";
-
     TomasuloSimulator simulator;
     simulator.run();
 
