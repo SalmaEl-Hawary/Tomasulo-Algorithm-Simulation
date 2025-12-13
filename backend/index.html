@@ -8,7 +8,7 @@
         body {
             font-family: Arial, sans-serif;
             margin: 20px;
-            background-color: #f5f5f5;
+            background-color: #221f1f;
         }
         
         .container {
@@ -22,7 +22,7 @@
         
         h1 {
             text-align: center;
-            color: #333;
+            color: #060606;
             margin-bottom: 30px;
         }
         
@@ -71,7 +71,7 @@
         button {
             padding: 12px 20px;
             font-size: 16px;
-            background: #007bff;
+            background: #112944;
             color: white;
             border: none;
             border-radius: 5px;
@@ -80,7 +80,7 @@
         }
         
         button:hover:not(:disabled) {
-            background: #0056b3;
+            background: #112944;
         }
         
         button:disabled {
@@ -90,7 +90,7 @@
         }
         
         button#runBtn {
-            background: #28a745;
+            background: #1f522b;
         }
         
         button#runBtn:hover:not(:disabled) {
@@ -272,30 +272,31 @@
         
         <div class="simulation-controls">
             <div class="instructions-section">
-                <h3>📝 Instructions Input</h3>
+                <h3> Instructions Input</h3>
                 <textarea id="instructions" placeholder="Enter instructions here, one per line">
 LOAD R1, 0(R0)
-ADD R2, R1, R1
-STORE R2, 4(R0)
-BEQ R1, R0, 2
-ADD R3, R2, R1
-STORE R3, 8(R0)</textarea>
+LOAD R2, 4(R0)
+ADD R3, R1, R2
+SUB R4, R3, R1
+MUL R5, R1, R2
+NAND R6, R1, R2
+STORE R5, 8(R0)</textarea>
                 <button id="loadBtn" style="margin-top: 10px; width: 100%; background: #186c79;">
-                    📥 Load Instructions
+                     Load Instructions
                 </button>
             </div>
             
             <div class="controls-section">
-                <h3>🎮 Simulation Controls</h3>
+                <h3> Simulation Controls</h3>
                 <div class="control-buttons">
-                    <button id="runBtn" disabled>▶️ Run Full Simulation</button>
-                    <button id="stepBtn" disabled>⏭️ Run Next Cycle</button>
-                    <button id="resetBtn">🔄 Reset Simulation</button>
-                    <button id="clearBtn">🗑️ Clear Output</button>
+                    <button id="runBtn" disabled>Run Full Simulation</button>
+                    <button id="stepBtn" disabled> Run Next Cycle</button>
+                    <button id="resetBtn"> Reset Simulation</button>
+                    <button id="clearBtn"> Clear Output</button>
                 </div>
                 
                 <div class="simulation-status">
-                    <h3>📊 Simulation Status</h3>
+                    <h3>Simulation Status</h3>
                     <div class="status-grid">
                         <div class="status-item">
                             <div class="status-label">Current Cycle</div>
@@ -324,7 +325,7 @@ STORE R3, 8(R0)</textarea>
         
         <div class="results-section">
             <div>
-                <h3>📋 Registers</h3>
+                <h3> Registers</h3>
                 <table id="registerTable">
                     <thead>
                         <tr>
@@ -338,7 +339,7 @@ STORE R3, 8(R0)</textarea>
                     </tbody>
                 </table>
                 
-                <h3 style="margin-top: 20px;">🏷️ Reservation Stations</h3>
+                <h3 style="margin-top: 20px;"> Reservation Stations</h3>
                 <table id="rsTable">
                     <thead>
                         <tr>
@@ -356,7 +357,7 @@ STORE R3, 8(R0)</textarea>
             </div>
             
             <div>
-                <h3>📊 Reorder Buffer</h3>
+                <h3> Reorder Buffer</h3>
                 <table id="robTable">
                     <thead>
                         <tr>
@@ -372,7 +373,7 @@ STORE R3, 8(R0)</textarea>
                     </tbody>
                 </table>
                 
-                <h3 style="margin-top: 20px;">💾 Memory (First 10 locations)</h3>
+                <h3 style="margin-top: 20px;"> Memory (First 10 locations)</h3>
                 <table id="memoryTable">
                     <thead>
                         <tr>
@@ -389,7 +390,7 @@ STORE R3, 8(R0)</textarea>
             </div>
         </div>
         
-        <h3>📤 Simulation Output</h3>
+        <h3>Simulation Output</h3>
         <textarea id="output" readonly></textarea>
         
         <div class="loading" id="loading">
@@ -402,13 +403,13 @@ STORE R3, 8(R0)</textarea>
         </div>
     </div>
 
-    <script type='text/javascript'>
+    <!-- FIRST: Set up the Module object BEFORE loading index.js -->
+    <script>
         // =============================================
         // GLOBAL VARIABLES AND STATE
         // =============================================
-        let Module = null;
         let wasmLoaded = false;
-        let loadingTimeout = null;
+        let wasmModule = null;
         
         // DOM Elements
         const outputElement = document.getElementById('output');
@@ -444,7 +445,7 @@ STORE R3, 8(R0)</textarea>
         function addOutput(text, isError = false) {
             if (!outputElement) return;
             
-            const prefix = isError ? '❌ ERROR: ' : '';
+            const prefix = isError ? ' ERROR: ' : '';
             outputElement.value += prefix + text + "\n";
             outputElement.scrollTop = outputElement.scrollHeight;
         }
@@ -455,6 +456,68 @@ STORE R3, 8(R0)</textarea>
             }
         }
         
+        // =============================================
+        // WASM MODULE CONFIGURATION - MUST BE SET FIRST
+        // =============================================
+        window.Module = {
+            print: function(text) {
+                console.log('WASM Output:', text);
+                addOutput(text);
+            },
+            
+            printErr: function(text) {
+                console.error('WASM Error:', text);
+                addOutput('ERROR: ' + text, true);
+            },
+            
+            setStatus: function(text) {
+                console.log('WASM Status:', text);
+                if (loadingStatus) {
+                    loadingStatus.textContent = text;
+                }
+            },
+            
+            onRuntimeInitialized: function() {
+                console.log(' WASM Runtime Initialized!');
+                wasmLoaded = true;
+                wasmModule = this;
+                
+                // Update UI
+                loadingElement.style.display = 'none';
+                document.getElementById('simState').textContent = 'Ready';
+                runBtn.disabled = false;
+                stepBtn.disabled = false;
+                
+                // Show success message
+                updateStatus(' WebAssembly module loaded successfully!', 'success');
+                
+                // Add welcome message
+                addOutput("=".repeat(60));
+                addOutput("TOMASULO ALGORITHM SIMULATOR");
+                addOutput("=".repeat(60));
+                addOutput("");
+                addOutput(" WebAssembly module loaded successfully!");
+                addOutput("Ready to simulate Tomasulo algorithm.");
+                addOutput("");
+                
+                // Check what functions are available
+                console.log('Module object:', Object.keys(this).filter(k => k.startsWith('_')));
+            },
+            
+            onAbort: function(reason) {
+                console.error('WASM Aborted:', reason);
+                updateStatus(` WASM module failed: ${reason}`, 'error');
+                loadingElement.style.display = 'none';
+                addOutput('WASM Aborted: ' + reason, true);
+            }
+        };
+    </script>
+    
+    <!-- SECOND: Load the Emscripten-generated JavaScript -->
+    <script src="index.js"></script>
+    
+    <!-- THIRD: Now run the rest of our JavaScript -->
+    <script>
         // =============================================
         // TABLE INITIALIZATION
         // =============================================
@@ -531,124 +594,15 @@ STORE R3, 8(R0)</textarea>
         }
         
         // =============================================
-        // WASM MODULE CONFIGURATION
-        // =============================================
-        function initializeWASMModule() {
-            debugLog('Setting up WASM module configuration...');
-            
-            // Clear any existing timeout
-            if (loadingTimeout) {
-                clearTimeout(loadingTimeout);
-            }
-            
-            // Define the Module object that Emscripten will use
-            window.Module = {
-                // Print from C++ stdout
-                print: function(text) {
-                    console.log('WASM Output:', text);
-                    addOutput(text);
-                },
-                
-                // Print from C++ stderr
-                printErr: function(text) {
-                    console.error('WASM Error:', text);
-                    addOutput(text, true);
-                },
-                
-                // Called when WASM is fully loaded
-                onRuntimeInitialized: function() {
-                    debugLog('✅ WASM Runtime Initialized!');
-                    wasmLoaded = true;
-                    
-                    // Update UI
-                    loadingElement.style.display = 'none';
-                    document.getElementById('simState').textContent = 'Ready';
-                    runBtn.disabled = false;
-                    stepBtn.disabled = false;
-                    runBtn.textContent = '▶️ Run Full Simulation';
-                    
-                    // Show success message
-                    updateStatus('✅ WebAssembly module loaded successfully! Click "Run Full Simulation" to start.', 'success');
-                    
-                    // Add welcome message
-                    clearOutput();
-                    addOutput("=".repeat(60));
-                    addOutput("TOMASULO ALGORITHM SIMULATOR");
-                    addOutput("=".repeat(60));
-                    addOutput("");
-                    addOutput("✅ WebAssembly module loaded successfully!");
-                    addOutput("Ready to simulate Tomasulo algorithm.");
-                    addOutput("");
-                    addOutput("Instructions loaded in text area above.");
-                    addOutput("Click 'Run Full Simulation' to start.");
-                    addOutput("");
-                    
-                    // Log available functions
-                    const wasmFunctions = Object.keys(this).filter(k => k.startsWith('_') && typeof this[k] === 'function');
-                    debugLog(`Available WASM functions: ${wasmFunctions.length}`);
-                    console.log('Available WASM functions:', wasmFunctions);
-                    
-                    // Set global Module reference
-                    Module = this;
-                },
-                
-                // Optional: Show loading progress
-                setStatus: function(text) {
-                    if (loadingStatus) {
-                        loadingStatus.textContent = text;
-                    }
-                    debugLog(`Loading: ${text}`);
-                },
-                
-                // Error handling
-                onAbort: function(reason) {
-                    console.error('WASM Aborted:', reason);
-                    updateStatus(`❌ WASM module failed: ${reason}`, 'error');
-                    loadingElement.style.display = 'none';
-                }
-            };
-            
-            // Set loading timeout
-            loadingTimeout = setTimeout(function() {
-                if (!wasmLoaded) {
-                    debugLog('⚠️ WASM loading timeout');
-                    updateStatus('⚠️ WebAssembly is taking longer than expected to load...', 'warning');
-                }
-            }, 3000);
-            
-            // Final timeout check
-            setTimeout(function() {
-                if (!wasmLoaded) {
-                    console.error('❌ WASM failed to load within 10 seconds');
-                    updateStatus('❌ WebAssembly failed to load. Check browser console for errors.', 'error');
-                    loadingElement.style.display = 'none';
-                    document.getElementById('simState').textContent = 'Failed';
-                    
-                    addOutput("\n" + "❌".repeat(20));
-                    addOutput("ERROR: WebAssembly module failed to load!");
-                    addOutput("❌".repeat(20));
-                    addOutput("");
-                    addOutput("Possible issues:");
-                    addOutput("1. index.js or index.wasm file not found");
-                    addOutput("2. Emscripten compilation error");
-                    addOutput("3. Browser doesn't support WebAssembly");
-                    addOutput("4. Server not serving files correctly");
-                    addOutput("");
-                    addOutput("Open browser DevTools (F12) for more details.");
-                }
-            }, 10000);
-        }
-        
-        // =============================================
         // SIMULATION FUNCTIONS
         // =============================================
         function runSimulation() {
-            if (!wasmLoaded || !Module || !Module._main) {
-                updateStatus('❌ Simulation module not ready. Please wait for WASM to load.', 'error');
+            if (!wasmLoaded || !wasmModule) {
+                updateStatus('Simulation module not ready. Please wait for WASM to load.', 'error');
                 return;
             }
             
-            updateStatus('▶️ Running simulation...', 'warning');
+            updateStatus('Running simulation...', 'warning');
             document.getElementById('simState').textContent = 'Running';
             
             // Add simulation header
@@ -658,13 +612,24 @@ STORE R3, 8(R0)</textarea>
             addOutput("");
             
             try {
-                // Run the C++ main function
-                debugLog('Calling Module._main()...');
-                Module._main();
+                // Try to call main function
+                if (wasmModule._main) {
+                    debugLog('Calling Module._main()...');
+                    wasmModule._main();
+                } else {
+                    addOutput(" _main function not found in WASM module.");
+                    addOutput("Available functions starting with '_':");
+                    const funcs = Object.keys(wasmModule).filter(k => k.startsWith('_'));
+                    for (const func of funcs) {
+                        addOutput(`  ${func}`);
+                    }
+                    updateStatus(' No _main function found', 'error');
+                    return;
+                }
                 
                 // Update status after completion
                 document.getElementById('simState').textContent = 'Complete';
-                updateStatus('✅ Simulation completed successfully!', 'success');
+                updateStatus(' Simulation completed successfully!', 'success');
                 
                 // Add completion message
                 addOutput("\n" + "=".repeat(60));
@@ -675,8 +640,8 @@ STORE R3, 8(R0)</textarea>
                 // Handle errors
                 console.error('Simulation error:', error);
                 document.getElementById('simState').textContent = 'Error';
-                updateStatus(`❌ Simulation error: ${error.message}`, 'error');
-                addOutput(`\n❌ Simulation error: ${error.message}`);
+                updateStatus(` Simulation error: ${error.message}`, 'error');
+                addOutput(`\nSimulation error: ${error.message}`);
             }
         }
         
@@ -691,8 +656,8 @@ STORE R3, 8(R0)</textarea>
             
             // Step Button
             stepBtn.addEventListener('click', function() {
-                updateStatus('⏭️ Step-by-step execution not yet implemented', 'warning');
-                addOutput("⏭️ Step function would execute one simulation cycle");
+                updateStatus(' Step-by-step execution not yet implemented', 'warning');
+                addOutput(" Step function would execute one simulation cycle");
             });
             
             // Load Instructions Button
@@ -700,8 +665,8 @@ STORE R3, 8(R0)</textarea>
                 const instructions = document.getElementById('instructions').value.trim();
                 const instructionCount = instructions.split('\n').filter(line => line.trim()).length;
                 
-                updateStatus(`📥 Loaded ${instructionCount} instruction(s)`, 'success');
-                addOutput(`\n📥 Loaded ${instructionCount} instruction(s):`);
+                updateStatus(` Loaded ${instructionCount} instruction(s)`, 'success');
+                addOutput(`\n Loaded ${instructionCount} instruction(s):`);
                 addOutput(instructions);
                 addOutput("");
             });
@@ -711,16 +676,16 @@ STORE R3, 8(R0)</textarea>
                 initializeTables();
                 updateStats();
                 document.getElementById('simState').textContent = wasmLoaded ? 'Ready' : 'Loading...';
-                updateStatus('🔄 Simulation reset', 'success');
-                addOutput("\n🔄 Simulation reset");
+                updateStatus(' Simulation reset', 'success');
+                addOutput("\n Simulation reset");
                 addOutput("Ready for new simulation.\n");
             });
             
             // Clear Output Button
             document.getElementById('clearBtn').addEventListener('click', function() {
                 clearOutput();
-                updateStatus('🗑️ Output cleared', 'success');
-                addOutput("🗑️ Output cleared");
+                updateStatus(' Output cleared', 'success');
+                addOutput(" Output cleared");
             });
         }
         
@@ -733,7 +698,7 @@ STORE R3, 8(R0)</textarea>
             // Show initial loading state
             loadingElement.style.display = 'block';
             statusAlert.style.display = 'block';
-            updateStatus('⏳ Loading WebAssembly module...', 'info');
+            updateStatus(' Loading WebAssembly module...', 'info');
             
             // Initialize tables and stats
             initializeTables();
@@ -742,55 +707,53 @@ STORE R3, 8(R0)</textarea>
             // Setup event listeners
             setupEventListeners();
             
-            // Initialize WASM module
-            initializeWASMModule();
+            // Set a timeout to check if WASM loaded
+            setTimeout(function() {
+                if (!wasmLoaded) {
+                    debugLog(' WASM loading timeout - checking console for errors');
+                    updateStatus(' WebAssembly loading timeout. Check browser console.', 'warning');
+                    addOutput(' WebAssembly loading timeout. Check browser DevTools (F12) for errors.');
+                    
+                    // Try to check if files exist
+                    fetch('index.wasm')
+                        .then(response => {
+                            if (response.ok) {
+                                addOutput('index.wasm file exists and is accessible');
+                            } else {
+                                addOutput(` index.wasm error: ${response.status} ${response.statusText}`);
+                            }
+                        })
+                        .catch(error => {
+                            addOutput(` Cannot load index.wasm: ${error.message}`);
+                        });
+                }
+            }, 5000);
             
             debugLog('Page initialization complete');
         }
         
         // =============================================
-        // ERROR HANDLING
-        // =============================================
-        window.addEventListener('error', function(event) {
-            console.error('Global JavaScript error:', event.error);
-            updateStatus(`❌ JavaScript error: ${event.message}`, 'error');
-        });
-        
-        window.addEventListener('unhandledrejection', function(event) {
-            console.error('Unhandled Promise rejection:', event.reason);
-            updateStatus(`❌ Unhandled Promise: ${event.reason}`, 'error');
-        });
-        
-        // =============================================
-        // START EVERYTHING WHEN DOM IS READY
+        // START EVERYTHING
         // =============================================
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM fully loaded and parsed');
             initializePage();
         });
         
-        // =============================================
-        // FALLBACK: If DOMContentLoaded already fired
-        // =============================================
+        // Fallback if DOM already loaded
         if (document.readyState === 'loading') {
-            // Still loading, wait for DOMContentLoaded
             document.addEventListener('DOMContentLoaded', initializePage);
         } else {
-            // DOM already loaded, initialize now
             initializePage();
         }
     </script>
-    
-    <!-- Load Emscripten-generated JavaScript -->
-    <!-- IMPORTANT: This MUST be loaded AFTER our Module configuration -->
-    <script src="index.js"></script>
     
     <!-- Fallback for browsers without WASM support -->
     <script>
         if (!('WebAssembly' in window)) {
             document.getElementById('loading').innerHTML = 
                 '<div style="color: #721c24; background: #f8d7da; padding: 20px; border-radius: 5px;">' +
-                '<h3>❌ WebAssembly Not Supported</h3>' +
+                '<h3> WebAssembly Not Supported</h3>' +
                 '<p>Your browser does not support WebAssembly. Please use:</p>' +
                 '<ul>' +
                 '<li>Chrome 57+</li>' +

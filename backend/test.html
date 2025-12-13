@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WASM Test</title>
+</head>
+<body>
+    <h1>WASM Load Test</h1>
+    <div id="output">Loading...</div>
+    
+    <script>
+        // Simple Module config
+        var Module = {
+            print: function(text) {
+                console.log('WASM:', text);
+                document.getElementById('output').innerHTML += text + '<br>';
+            },
+            printErr: function(text) {
+                console.error('WASM Error:', text);
+                document.getElementById('output').innerHTML += '<span style="color:red">ERROR: ' + text + '</span><br>';
+            },
+            onRuntimeInitialized: function() {
+                console.log('✅ WASM Runtime Initialized!');
+                document.getElementById('output').innerHTML += '<h2 style="color:green">✅ WASM Loaded!</h2>';
+                
+                // Try to call main
+                try {
+                    if (this._main) {
+                        console.log('Calling _main...');
+                        this._main();
+                    } else {
+                        console.log('_main not found');
+                        document.getElementById('output').innerHTML += '_main function not found<br>';
+                    }
+                } catch(e) {
+                    console.error('Error:', e);
+                    document.getElementById('output').innerHTML += 'Error: ' + e + '<br>';
+                }
+            },
+            onAbort: function(reason) {
+                console.error('Abort:', reason);
+                document.getElementById('output').innerHTML += 'Abort: ' + reason + '<br>';
+            }
+        };
+    </script>
+    
+    <script src="index.js"></script>
+    
+    <script>
+        // Timeout check
+        setTimeout(function() {
+            if (!Module._main) {
+                document.getElementById('output').innerHTML += '<h3 style="color:orange">Timeout - checking why...</h3>';
+                
+                // Check what's in Module
+                let keys = Object.keys(Module);
+                document.getElementById('output').innerHTML += 'Module keys: ' + keys.join(', ') + '<br>';
+                
+                // Check for _ prefixed functions
+                let funcs = keys.filter(k => k.startsWith('_'));
+                document.getElementById('output').innerHTML += 'Functions starting with _: ' + funcs.join(', ') + '<br>';
+            }
+        }, 3000);
+    </script>
+</body>
+</html>
